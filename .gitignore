@@ -1,0 +1,87 @@
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# =========================
+# Django
+# =========================
+*.log
+db.sqlite3
+db.sqlite3-journal
+
+# Static/media generated locally
+staticfiles/
+media/
+
+# =========================
+# uv
+# =========================
+# Keep uv.lock committed for applications.
+# Do NOT ignore uv.lock.
+
+# =========================
+# Testing / Coverage
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# =========================
+# Type checking / linters
+# =========================
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# IDEs / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Build / packaging
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp
+*.bak
