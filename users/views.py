@@ -1,3 +1,13 @@
-from django.shortcuts import render
+from rest_framework.views import APIView
+from rest_framework.response import Response
 
-# Create your views here.
+from users.permissions import IsDispatcher
+
+
+class DispatchView(APIView):
+    permission_classes = [IsDispatcher]
+
+    def get(self, request):
+        return Response({
+            "message": "You are a dispatcher."
+        })
