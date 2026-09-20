@@ -28,6 +28,7 @@ class Inventory(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name_plural = "Inventories"
         constraints = [
             models.UniqueConstraint(
                 fields=["warehouse", "product"],
