@@ -38,5 +38,6 @@ urlpatterns = [
         name="token_refresh",
     ),
     path("api/", include("products.urls")),
+    path("api/", include("warehouses.urls")),
 ]
 
