@@ -1,7 +1,7 @@
 
 # Create your models here.
 from django.db import models
-
+from warehouses.models import Warehouse
 from customers.models import Customer
 from products.models import Product
 
@@ -22,6 +22,14 @@ class Order(models.Model):
         related_name="orders",
     )
 
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -39,6 +47,11 @@ class Order(models.Model):
     )
 
     delivery_window_end = models.TimeField(
+        null=True,
+        blank=True,
+    )
+
+    allocated_at = models.DateTimeField(
         null=True,
         blank=True,
     )

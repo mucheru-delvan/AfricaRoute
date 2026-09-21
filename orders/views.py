@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from .models import Order
 from .serializers import OrderSerializer
-from .services import confirm_order
+from .services import allocate_order, confirm_order
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -26,6 +26,27 @@ class OrderViewSet(viewsets.ModelViewSet):
     def confirm(self, request, pk=None):
         try:
             order = confirm_order(pk)
+        except Order.DoesNotExist:
+            return Response(
+                {"detail": "Order not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = self.get_serializer(order)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+    @action(
+    detail=True,
+    methods=["post"],
+    url_path="allocate",
+)
+    def allocate(self, request, pk=None):
+        try:
+            order = allocate_order(pk)
         except Order.DoesNotExist:
             return Response(
                 {"detail": "Order not found."},

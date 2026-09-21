@@ -42,12 +42,16 @@ class OrderSerializer(serializers.ModelSerializer):
             "items",
             "created_at",
             "updated_at",
+            "warehouse",
+            "allocated_at",
         ]
         read_only_fields = [
             "id",
             "status",
             "created_at",
             "updated_at",
+            "warehouse",
+            "allocated_at",
         ]
 
     def validate(self, attrs):
