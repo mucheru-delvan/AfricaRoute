@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     'inventory',
     'customers',
     'orders',
-    
+    'fleet',
 ]
 
 MIDDLEWARE = [
@@ -157,3 +157,6 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = "users.User"
+
+USE_TZ = True
+TIME_ZONE = "Africa/Nairobi"
