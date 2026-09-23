@@ -43,6 +43,7 @@ urlpatterns = [
     path("api/", include("customers.urls")),
     path("api/", include("orders.urls")),
     path("api/", include("fleet.urls")),
+    path("api/", include("routes.urls")),
 ]
 
 admin.site.site_header = "AfricaRoute Admin Panel"
