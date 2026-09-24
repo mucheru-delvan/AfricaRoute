@@ -5,16 +5,27 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from .models import Route
+from orders.models import Order
+
+from .models import Route, RouteStop
 
 
 AVERAGE_SPEED_KMPH = 30.0
 
 
+def customer_location(stop):
+    customer = stop.order.customer
+
+    return (
+        float(customer.latitude),
+        float(customer.longitude),
+    )
+
+
 def haversine_distance(point_a, point_b):
     """
-    Calculate approximate straight-line distance between
-    two latitude/longitude points in kilometres.
+    Calculate straight-line geographic distance
+    between two latitude/longitude points in kilometres.
     """
 
     lat1, lon1 = point_a
@@ -22,10 +33,10 @@ def haversine_distance(point_a, point_b):
 
     earth_radius_km = 6371.0
 
-    lat1 = math.radians(float(lat1))
-    lon1 = math.radians(float(lon1))
-    lat2 = math.radians(float(lat2))
-    lon2 = math.radians(float(lon2))
+    lat1 = math.radians(lat1)
+    lon1 = math.radians(lon1)
+    lat2 = math.radians(lat2)
+    lon2 = math.radians(lon2)
 
     dlat = lat2 - lat1
     dlon = lon2 - lon1
@@ -45,9 +56,23 @@ def haversine_distance(point_a, point_b):
     return earth_radius_km * c
 
 
+def distance_from_depot(depot, stop):
+    return haversine_distance(
+        depot,
+        customer_location(stop),
+    )
+
+
+def distance_between_stops(stop_a, stop_b):
+    return haversine_distance(
+        customer_location(stop_a),
+        customer_location(stop_b),
+    )
+
+
 def route_distance(depot, stops):
     """
-    Calculate total round-trip distance:
+    Calculate:
 
     depot → stop 1 → stop 2 → ... → depot
     """
@@ -56,18 +81,21 @@ def route_distance(depot, stops):
         return 0.0
 
     total_distance = 0.0
-    current = depot
 
-    for stop in stops:
-        total_distance += haversine_distance(
-            current,
-            stop,
-        )
-        current = stop
-
-    total_distance += haversine_distance(
-        current,
+    total_distance += distance_from_depot(
         depot,
+        stops[0],
+    )
+
+    for index in range(len(stops) - 1):
+        total_distance += distance_between_stops(
+            stops[index],
+            stops[index + 1],
+        )
+
+    total_distance += distance_from_depot(
+        depot,
+        stops[-1],
     )
 
     return total_distance
@@ -75,41 +103,52 @@ def route_distance(depot, stops):
 
 def nearest_neighbor(depot, stops):
     """
-    Build an initial route by repeatedly selecting
-    the nearest unvisited stop.
+    Construct an initial route by repeatedly selecting
+    the nearest unvisited RouteStop.
     """
 
     remaining = list(stops)
     ordered = []
 
     current = depot
+    current_stop = None
 
     while remaining:
-        nearest = min(
-            remaining,
-            key=lambda stop: haversine_distance(
-                current,
-                stop,
-            ),
-        )
+        if current_stop is None:
+            nearest = min(
+                remaining,
+                key=lambda stop: distance_from_depot(
+                    current,
+                    stop,
+                ),
+            )
+        else:
+            nearest = min(
+                remaining,
+                key=lambda stop: distance_between_stops(
+                    current_stop,
+                    stop,
+                ),
+            )
 
         ordered.append(nearest)
         remaining.remove(nearest)
-        current = nearest
+        current_stop = nearest
 
     return ordered
 
 
 def two_opt(depot, stops):
     """
-    Improve an existing route by reversing route segments
-    whenever the change reduces total distance.
+    Improve the route by reversing route segments
+    when doing so reduces total distance.
     """
 
     if len(stops) < 3:
-        return stops
+        return list(stops)
 
     best_route = list(stops)
+
     best_distance = route_distance(
         depot,
         best_route,
@@ -144,11 +183,11 @@ def two_opt(depot, stops):
 @transaction.atomic
 def optimize_route(route_id):
     route = (
-    Route.objects
-    .select_for_update()
-    .select_related("warehouse")
-    .get(pk=route_id)
-)
+        Route.objects
+        .select_for_update()
+        .select_related("warehouse")
+        .get(pk=route_id)
+    )
 
     if route.status != Route.Status.DRAFT:
         raise ValidationError(
@@ -161,12 +200,14 @@ def optimize_route(route_id):
             "The route warehouse is not active."
         )
 
-    if route.vehicle is None:
+    if route.vehicle_id is None:
         raise ValidationError(
             "A vehicle must be assigned before optimization."
         )
 
-    if not route.vehicle.is_active:
+    vehicle = route.vehicle
+
+    if not vehicle.is_active:
         raise ValidationError(
             "The assigned vehicle is not active."
         )
@@ -187,12 +228,20 @@ def optimize_route(route_id):
             "A route must contain at least one stop."
         )
 
+    # Make sure every stop is unique.
+    stop_ids = [stop.id for stop in stops]
+
+    if len(stop_ids) != len(set(stop_ids)):
+        raise ValidationError(
+            "The route contains duplicate stops."
+        )
+
     total_load = 0
 
     for stop in stops:
         order = stop.order
 
-        if order.status != "ALLOCATED":
+        if order.status != Order.Status.ALLOCATED:
             raise ValidationError(
                 f"Order {order.id} is not allocated."
             )
@@ -207,10 +256,10 @@ def optimize_route(route_id):
             for item in order.items.all()
         )
 
-    if total_load > route.vehicle.capacity:
+    if total_load > vehicle.capacity:
         raise ValidationError(
             f"Route load is {total_load}, but vehicle "
-            f"capacity is only {route.vehicle.capacity}."
+            f"capacity is only {vehicle.capacity}."
         )
 
     depot = (
@@ -218,78 +267,76 @@ def optimize_route(route_id):
         float(route.warehouse.longitude),
     )
 
-    stop_locations = []
-
-    for stop in stops:
-        customer = stop.order.customer
-
-        location = (
-            float(customer.latitude),
-            float(customer.longitude),
-        )
-
-        stop_locations.append(
-            (stop, location)
-        )
-
-    location_map = {
-        stop.id: location
-        for stop, location in stop_locations
-    }
-
-    initial = nearest_neighbor(
+    # Build initial route.
+    initial_route = nearest_neighbor(
         depot,
-        [
-            location_map[stop.id]
-            for stop, _ in stop_locations
-        ],
+        stops,
     )
 
-    stop_by_location = {
-        location: stop
-        for stop, location in stop_locations
-    }
-
-    optimized_locations = two_opt(
+    # Improve initial route.
+    optimized_stops = two_opt(
         depot,
-        initial,
+        initial_route,
     )
 
-    optimized_stops = [
-        stop_by_location[location]
-        for location in optimized_locations
-    ]
+    # Verify that optimization did not lose or duplicate stops.
+    optimized_ids = [stop.id for stop in optimized_stops]
+
+    if set(optimized_ids) != set(stop_ids):
+        raise ValidationError(
+            "Route optimization produced an invalid set of stops."
+        )
+
+    if len(optimized_ids) != len(set(optimized_ids)):
+        raise ValidationError(
+            "Route optimization produced duplicate stops."
+        )
 
     final_distance = route_distance(
         depot,
-        optimized_locations,
+        optimized_stops,
     )
 
     estimated_duration = math.ceil(
         (final_distance / AVERAGE_SPEED_KMPH) * 60
     )
 
-    # Temporarily move sequences away from existing values
-    # so the unique(route, sequence) constraint is not violated.
-    temporary_base = 1_000_000
+    # ---------------------------------------------------------
+    # Safely replace existing sequence values.
+    # ---------------------------------------------------------
 
-    for index, stop in enumerate(optimized_stops, start=1):
+    highest_sequence = max(
+        stop.sequence
+        for stop in stops
+    )
+
+    temporary_base = (
+        highest_sequence
+        + len(stops)
+        + 1000
+    )
+
+    # First move every stop away from the real sequence range.
+    for index, stop in enumerate(
+        stops,
+        start=1,
+    ):
         stop.sequence = temporary_base + index
 
-    RouteStop = stops[0].__class__
+        stop.save(
+            update_fields=["sequence"]
+        )
 
-    RouteStop.objects.bulk_update(
+    # Now assign the optimized sequence.
+    for index, stop in enumerate(
         optimized_stops,
-        ["sequence"],
-    )
-
-    for index, stop in enumerate(optimized_stops, start=1):
+        start=1,
+    ):
         stop.sequence = index
 
-    RouteStop.objects.bulk_update(
-        optimized_stops,
-        ["sequence"],
-    )
+        stop.save(
+            update_fields=["sequence"]
+        )
 
     route.total_distance_km = Decimal(
         str(round(final_distance, 2))
