@@ -144,14 +144,11 @@ def two_opt(depot, stops):
 @transaction.atomic
 def optimize_route(route_id):
     route = (
-        Route.objects
-        .select_for_update()
-        .select_related(
-            "warehouse",
-            "vehicle",
-        )
-        .get(pk=route_id)
-    )
+    Route.objects
+    .select_for_update()
+    .select_related("warehouse")
+    .get(pk=route_id)
+)
 
     if route.status != Route.Status.DRAFT:
         raise ValidationError(
