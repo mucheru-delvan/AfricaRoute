@@ -1,5 +1,5 @@
 from django.shortcuts import render
-
+from .services import optimize_route, start_route
 # Create your views here.
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -39,6 +39,28 @@ class RouteViewSet(viewsets.ModelViewSet):
     def optimize(self, request, pk=None):
         try:
             route = optimize_route(pk)
+        except Route.DoesNotExist:
+            return Response(
+                {"detail": "Route not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = self.get_serializer(route)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+        
+    @action(
+    detail=True,
+    methods=["post"],
+    url_path="start",
+    )
+    def start(self, request, pk=None):
+        try:
+            route = start_route(pk)
         except Route.DoesNotExist:
             return Response(
                 {"detail": "Route not found."},

@@ -1,6 +1,6 @@
 import math
 from decimal import Decimal
-
+from fleet.models import Vehicle
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -356,6 +356,74 @@ def optimize_route(route_id):
             "estimated_duration_minutes",
             "optimized_at",
             "status",
+            "updated_at",
+        ]
+    )
+
+    return route
+
+@transaction.atomic
+def start_route(route_id):
+    route = (
+        Route.objects
+        .select_for_update()
+        .get(pk=route_id)
+    )
+
+    if route.status != Route.Status.OPTIMIZED:
+        raise ValidationError(
+            f"Only optimized routes can be started. "
+            f"Current status: {route.status}."
+        )
+
+    if route.vehicle_id is None:
+        raise ValidationError(
+            "A vehicle must be assigned before starting."
+        )
+
+    if route.driver_id is None:
+        raise ValidationError(
+            "A driver must be assigned before starting."
+        )
+
+    if not route.stops.exists():
+        raise ValidationError(
+            "A route must contain at least one stop."
+        )
+
+    vehicle = (
+        Vehicle.objects
+        .select_for_update()
+        .get(pk=route.vehicle_id)
+    )
+
+    if not vehicle.is_active:
+        raise ValidationError(
+            "The assigned vehicle is not active."
+        )
+
+    if vehicle.status != Vehicle.Status.AVAILABLE:
+        raise ValidationError(
+            f"Vehicle is not available. "
+            f"Current status: {vehicle.status}."
+        )
+
+    route.status = Route.Status.IN_PROGRESS
+    route.started_at = timezone.now()
+
+    vehicle.status = Vehicle.Status.IN_TRANSIT
+
+    vehicle.save(
+        update_fields=[
+            "status",
+            "updated_at",
+        ]
+    )
+
+    route.save(
+        update_fields=[
+            "status",
+            "started_at",
             "updated_at",
         ]
     )
